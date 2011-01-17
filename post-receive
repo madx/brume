@@ -1,0 +1,138 @@
+#!/bin/sh
+
+WORK_TREE="`git config --get brume.worktree`"
+DOMAIN="`git config --get brume.domain`"
+FEED="`git config --get brume.feed`"
+DATE_FMT="`git config --get brume.dateFormat`"
+SCRIPT="`git config --get brume.script`"
+TITLE="`git config --get brume.title`"
+
+# Defaults
+if [ -z "$WORK_TREE" ]; then WORK_TREE="`pwd`/www";       fi
+if [ -z "$DOMAIN" ];    then DOMAIN="example.com";        fi
+if [ -z "$FEED" ];      then FEED="changelog.atom";       fi
+if [ -z "$DATE_FMT" ];  then DATE_FMT="%FT%T%:z";         fi
+if [ -z "$SCRIPT" ];    then SCRIPT="./scripts/build.sh"; fi
+if [ -z "$TITLE" ];     then TITLE="Changelog for %s";    fi
+
+# Update the work tree
+update_work_tree () {
+  GIT_WORK_TREE="$WORK_TREE" git checkout -f
+}
+
+# Run the build script
+apply_meta () {
+  local files="`find $WORK_TREE/* \( \! -name "*$FEED" \)`"
+  for file in $files; do
+    meta_process "$file"
+    if [ -x $SCRIPT ]; then
+      $SCRIPT "$file"
+    fi
+  done
+}
+
+meta_process () {
+  local file="$1" path="${1#$WORK_TREE/}"
+
+  meta_replace HASH       "`file_meta_hash    $path`" $file
+  meta_replace SHORT_HASH "`file_meta_shash   $path`" $file
+  meta_replace AUTHOR     "`file_meta_author  $path`" $file
+  meta_replace COMMENT    "`file_meta_comment $path`" $file
+  meta_replace SUBJECT    "`file_meta_subject $path`" $file
+  meta_replace DATE       "`file_meta_date    $path`" $file
+}
+
+meta_replace () {
+  local tag="$1" value="$2" file="$3"
+
+  value="`echo "$value" | sed -e 's/\(\/\|\\\|&\)/\\\&/g'`"
+
+  if [ -f "$file" ]; then
+    sed -i "s/__${tag}__/$value/" $file 
+  fi
+}
+
+build_feed () {
+  cat > $WORK_TREE/$FEED <<EOF
+<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom">
+  <title>`printf $TITLE $DOMAIN`</title>
+  <link rel="self" type="application/atom+xml" href="http://$DOMAIN/$FEED"/>
+  <link rel="alternate" type="text/html" href="http://$DOMAIN/"/>
+  <updated>`file_meta_xmldate`</updated>
+`build_feed_authors`
+`build_feed_entries`
+</feed>
+EOF
+}
+
+build_feed_authors () {
+  local match='\(\S\+\) <\(\S\+\)>'
+  git shortlog -se | cut -f2 | sed "s/$match/\1 \2/" |
+  while read name email; do
+    cat <<EOF
+  <author>
+    <name>$name</name>
+    <email>$email</email>
+  </author>
+EOF
+  done
+}
+
+build_feed_entries () {
+  local subject hash time comment
+
+  for commit in `git log -n20 --pretty='%H'`; do
+    subject="`commit_meta_subject $commit | html_escape`"
+    hash="`commit_meta_hash $commit`"
+    time="`commit_meta_xmldate $commit`"
+    comment="`commit_meta_comment $commit | html_escape`"
+    cat <<EOF
+  <entry>
+    <title>$subject</title>
+    <id>$hash</id>
+    <published>$time</published>
+    <content type="text"><![CDATA[$comment]]></content>
+  </entry>
+EOF
+  done
+}
+
+git_commit_meta () {
+  local field="$1" commit="$2"
+
+  git log -1 $commit --pretty=format:"$field"
+}
+
+git_file_meta () {
+  local field="$1" path="$2"
+
+  git log -1 --pretty=format:"$field" -- $path
+}
+
+commit_meta_hash    () { git_commit_meta %H  $1;  }
+commit_meta_shash   () { git_commit_meta %h  $1;  }
+commit_meta_author  () { git_commit_meta %an $1; }
+commit_meta_comment () { git_commit_meta %b  $1; }
+commit_meta_subject () { git_commit_meta %s  $1; }
+commit_meta_date    () { git_commit_meta %ai $1 | date -f - +"$DATE_FMT"; }
+commit_meta_xmldate () { git_commit_meta %ai $1 | date -f - +"%FT%T%:z"; }
+
+file_meta_hash    () { git_file_meta %H  $1;  }
+file_meta_shash   () { git_file_meta %h  $1;  }
+file_meta_author  () { git_file_meta %an $1; }
+file_meta_comment () { git_file_meta %b  $1; }
+file_meta_subject () { git_file_meta %s  $1; }
+file_meta_date    () { git_file_meta %ai $1 | date -f - +"$DATE_FMT"; }
+file_meta_xmldate () { git_file_meta %ai $1 | date -f - +"%FT%T%:z"; }
+
+html_escape () {
+  sed -e 's/</\&lt;/' -e 's/>/\&gt;/' -e 's/&/\&amp;/'
+}
+
+echo "Updating work tree"
+update_work_tree
+echo "Applying metadata"
+apply_meta
+echo "Generating feed"
+build_feed
