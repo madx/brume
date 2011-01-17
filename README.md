@@ -44,6 +44,7 @@ The placeholders must be surrounded by `__`s. Here they are:
 
 ## Todo-list
 
+* Nicer changelog file
 * Add (pre|post)-build hooks
 * Smart building
 
