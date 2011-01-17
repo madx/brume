@@ -127,7 +127,7 @@ file_meta_date    () { git_file_meta %ai $1 | date -f - +"$DATE_FMT"; }
 file_meta_xmldate () { git_file_meta %ai $1 | date -f - +"%FT%T%:z"; }
 
 html_escape () {
-  sed -e 's/</\&lt;/' -e 's/>/\&gt;/' -e 's/&/\&amp;/'
+  sed -e 's/&/\&amp;/' -e 's/</\&lt;/' -e 's/>/\&gt;/'
 }
 
 echo "Updating work tree"
