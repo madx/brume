@@ -121,7 +121,7 @@ ref_end=`echo $refs | cut -d' ' -f2`
 TMP_DIR=`mktemp -d brume.XXXXXX`
 
 echo "Checkout temp files [$TMP_DIR]"
-GIT_OUTPUT="$TMP_DIR" git checkout -f
+GIT_WORK_TREE="$TMP_DIR" git checkout -f
 
 echo "Apply changes"
 if expr match $ref_start '0\{40\}' >/dev/null; then
@@ -135,16 +135,22 @@ else
   removals="`git diff --name-status $range | grep -E '^D' | cut -f2`"
 fi
 
-for file in "$changes"; do
+for file in $changes; do
   if [ -n "$file" ]; then
-    echo "  $file -> $OUTPUT/$file"
-    GIT_DIR="`pwd`" BRUME_FILE="$file" $BUILDER $TMP_DIR/$file $OUTPUT/$file
+    if [ -f "$TMP_DIR/$file" ]; then
+      echo "  $file -> $OUTPUT/$file"
+      GIT_DIR="`pwd`" BRUME_FILE="$file" $BUILDER $TMP_DIR/$file $OUTPUT/$file
+    elif [ -d "$TMP_DIR/$file" ]; then
+      echo "  mkdir $file"
+      mkdir -p $OUTPUT/$file
+    fi
   fi
 done
 
-for file in "$removals"; do
+for file in $removals; do
   if [ -n "$file" ]; then
     echo "  rm $OUTPUT/$file"
+    rm $OUTPUT/$file
   fi
 done
 

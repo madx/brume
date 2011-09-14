@@ -32,6 +32,10 @@ this folder and ta-da, here's your website!
 
 ## Settings
 
+* `brume.output`:
+  Defines the directory where brume will put the contents of the repository
+* `brume.builder`: Foo bar!
+
 ## Todo-list
 
 * Add a setup script
